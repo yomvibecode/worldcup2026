@@ -316,8 +316,8 @@ header p { color: var(--muted); font-size: 13px; margin-top: 12px; font-weight: 
     <div class="stat"><div class="val">48</div><div class="lbl">Teams</div></div>
     <div class="stat"><div class="val">12</div><div class="lbl">Groups</div></div>
     <div class="stat"><div class="val">104</div><div class="lbl">Matches</div></div>
-    <div class="stat"><div class="val" id="statMatchday">–</div><div class="lbl">Matchday</div></div>
-    <div class="stat"><div class="val" id="statDays">–</div><div class="lbl">Days to Start</div></div>
+    <div class="stat"><div class="val" id="statMatchday">–</div><div class="lbl">Matches Played</div></div>
+    <div class="stat"><div class="val" id="statDays">–</div><div class="lbl">Days Remaining</div></div>
   </div>
 
   <div class="api-bar">
@@ -421,10 +421,20 @@ let myTeam       = localStorage.getItem('wc26_myteam') || null;
 let activeFilter = 'all';
 let searchTerm   = '';
 
-// Days to start
+// Days remaining (to final if started, to start if not yet)
 (function(){
-  const diff = Math.ceil((new Date('2026-06-11') - new Date()) / 86400000);
-  document.getElementById('statDays').textContent = diff > 0 ? diff : (diff === 0 ? 'Today!' : '–');
+  const start = new Date('2026-06-11');
+  const final = new Date('2026-07-19');
+  const now   = new Date();
+  const el    = document.getElementById('statDays');
+  if (now < start) {
+    const diff = Math.ceil((start - now) / 86400000);
+    el.textContent = diff;
+    el.closest('.stat').querySelector('.lbl').textContent = 'Days to Start';
+  } else {
+    const diff = Math.ceil((final - now) / 86400000);
+    el.textContent = diff > 0 ? diff : '🏆';
+  }
 })();
 
 window.addEventListener('DOMContentLoaded', loadAll);
@@ -462,7 +472,12 @@ async function loadStandings() {
   }
   const data = await res.json();
 
-  document.getElementById('statMatchday').textContent = data.season?.currentMatchday || '1';
+  // Count total matches played across all groups
+  const matchesPlayed = (data.standings || []).reduce((total, group) => {
+    const played = group.table?.[0]?.playedGames || 0;
+    return total + (played * group.table.length / 2);
+  }, 0);
+  document.getElementById('statMatchday').textContent = Math.round(matchesPlayed) || '–';
   groupsData = {};
 
   (data.standings || []).forEach(group => {
