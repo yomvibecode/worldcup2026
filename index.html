@@ -577,15 +577,16 @@ async function loadMatches() {
   }
   const data = await res.json();
 
-  const stageOrder  = ['ROUND_OF_32','ROUND_OF_16','QUARTER_FINALS','SEMI_FINALS','THIRD_PLACE','FINAL'];
+  const stageOrder  = ['LAST_32','LAST_16','QUARTER_FINALS','SEMI_FINALS','THIRD_PLACE','FINAL'];
   const stageLabels = {
-    ROUND_OF_32:'Round of 32', ROUND_OF_16:'Round of 16',
+    LAST_32:'Round of 32', LAST_16:'Round of 16',
     QUARTER_FINALS:'Quarter-Finals', SEMI_FINALS:'Semi-Finals',
     THIRD_PLACE:'Third Place', FINAL:'🏆 Final',
   };
 
   const byStage = {};
   stageOrder.forEach(s => (byStage[s] = []));
+  byStage['GROUP_STAGE'] = []; // capture group stage matches for fixtures
 
   // Build full fixtures list (all stages including group)
   fixturesData = [];
@@ -635,8 +636,8 @@ async function loadMatches() {
 function buildPlaceholderKnockout() {
   const tbd = d => ({ home:'TBD', homeFlag:'⬜', away:'TBD', awayFlag:'⬜', homeScore:null, awayScore:null, status:'SCHEDULED', date:d });
   knockoutData = [
-    { round:'Round of 32',    stage:'ROUND_OF_32',    matches: Array(16).fill(null).map(()=>tbd('Jun 28–Jul 3')) },
-    { round:'Round of 16',    stage:'ROUND_OF_16',    matches: Array(8).fill(null).map(()=>tbd('Jul 5–8')) },
+    { round:'Round of 32',    stage:'LAST_32',         matches: Array(16).fill(null).map(()=>tbd('Jun 28–Jul 3')) },
+    { round:'Round of 16',    stage:'LAST_16',         matches: Array(8).fill(null).map(()=>tbd('Jul 5–8')) },
     { round:'Quarter-Finals', stage:'QUARTER_FINALS', matches: Array(4).fill(null).map(()=>tbd('Jul 11–12')) },
     { round:'Semi-Finals',    stage:'SEMI_FINALS',    matches: Array(2).fill(null).map(()=>tbd('Jul 15–16')) },
     { round:'Third Place',    stage:'THIRD_PLACE',    matches: [tbd('Jul 18')] },
@@ -681,7 +682,7 @@ function renderFixtures() {
 
   let matches = fixturesData.filter(function(m) {
     if (fixtureFilter === 'today')    return m.utcDate && m.utcDate.toDateString() === today;
-    if (fixtureFilter === 'upcoming') return m.utcDate && m.utcDate > now && m.status === 'SCHEDULED';
+    if (fixtureFilter === 'upcoming') return m.utcDate && m.utcDate > now && (m.status === 'SCHEDULED' || m.status === 'TIMED');
     if (fixtureFilter === 'results')  return m.status === 'FINISHED';
     if (fixtureFilter === 'my-team')  return myTeam && (m.home === myTeam || m.away === myTeam);
     return true;
@@ -703,7 +704,7 @@ function renderFixtures() {
   });
 
   var stageMap = {
-    GROUP_STAGE:'Group Stage', ROUND_OF_32:'R32', ROUND_OF_16:'R16',
+    GROUP_STAGE:'Group Stage', LAST_32:'Round of 32', LAST_16:'Round of 16',
     QUARTER_FINALS:'QF', SEMI_FINALS:'SF', THIRD_PLACE:'3rd Place', FINAL:'Final'
   };
 
@@ -716,7 +717,7 @@ function renderFixtures() {
     html += '</div>';
 
     day.matches.forEach(function(m) {
-      var isLive     = m.status === 'IN_PLAY' || m.status === 'PAUSED';
+      var isLive     = m.status === 'IN_PLAY' || m.status === 'PAUSED' || m.status === 'HALFTIME';
       var isFinished = m.status === 'FINISHED';
       var isMyMatch  = myTeam && (m.home === myTeam || m.away === myTeam);
       var hasScore   = m.homeScore !== null && m.awayScore !== null;
