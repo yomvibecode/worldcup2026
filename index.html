@@ -296,6 +296,68 @@ header p { color: var(--muted); font-size: 13px; margin-top: 12px; font-weight: 
   .groups-grid { grid-template-columns: 1fr 1fr; }
   .bracket { min-width: 700px; }
 }
+
+/* ── FIXTURES ── */
+.fixture-controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+.fix-filter-btn {
+  background:var(--panel); border:1px solid var(--border);
+  border-radius:8px; padding:7px 16px; color:var(--muted);
+  font-family:'DM Sans',sans-serif; font-size:12px;
+  cursor:pointer; transition:all .2s; white-space:nowrap;
+}
+.fix-filter-btn:hover, .fix-filter-btn.active {
+  background:rgba(201,168,76,0.1); border-color:var(--gold); color:var(--gold);
+}
+.fixture-day { margin-bottom:24px; }
+.fixture-day-header {
+  font-family:'Bebas Neue',sans-serif; font-size:16px;
+  letter-spacing:2px; color:var(--gold);
+  padding:8px 0; margin-bottom:10px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:10px;
+}
+.today-badge {
+  background:var(--gold); color:var(--dark);
+  font-size:9px; letter-spacing:1.5px; padding:2px 8px;
+  border-radius:20px; font-family:'DM Sans',sans-serif;
+  font-weight:700; text-transform:uppercase;
+}
+.fixture-row {
+  display:flex; align-items:center;
+  background:var(--panel); border:1px solid var(--border);
+  border-radius:10px; margin-bottom:6px; overflow:hidden;
+  transition:border-color .2s;
+}
+.fixture-row:hover { border-color:rgba(201,168,76,0.35); }
+.fixture-row.my-team-fixture { border-color:rgba(201,168,76,0.5); background:rgba(201,168,76,0.04); }
+.fixture-row.live-fixture { border-color:#4caf50; }
+.fixture-time {
+  width:64px; text-align:center; flex-shrink:0;
+  padding:12px 8px; border-right:1px solid var(--border);
+}
+.fixture-time .fx-t { font-family:'Bebas Neue',sans-serif; font-size:17px; color:var(--gold); line-height:1; }
+.fixture-time .live-dot { font-size:9px; color:#4caf50; letter-spacing:1px; margin-top:2px; }
+.fixture-time .ft-lbl { font-size:9px; color:var(--muted); margin-top:2px; letter-spacing:.5px; }
+.fixture-teams { flex:1; display:flex; align-items:center; padding:10px 16px; }
+.fx-team { display:flex; align-items:center; gap:8px; flex:1; }
+.fx-team.away { flex-direction:row-reverse; }
+.fx-team .fx-flag { font-size:20px; }
+.fx-team .fx-name { font-size:13px; font-weight:500; }
+.fx-team.away .fx-name { text-align:right; }
+.fx-score { display:flex; align-items:center; gap:6px; min-width:60px; justify-content:center; flex-shrink:0; }
+.fx-score .s { font-family:'Bebas Neue',sans-serif; font-size:22px; color:var(--gold); }
+.fx-score .dash { color:var(--muted); font-size:14px; }
+.fixture-meta {
+  padding:10px 14px; border-left:1px solid var(--border);
+  text-align:right; flex-shrink:0; min-width:90px;
+}
+.fx-stage { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+.fx-venue { font-size:9px; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; }
+.no-fixtures { text-align:center; color:var(--muted); padding:40px; font-size:13px; }
+@media (max-width:600px) {
+  .fixture-meta { display:none; }
+  .fx-team .fx-name { font-size:11px; }
+}
 </style>
 </head>
 <body>
@@ -352,12 +414,19 @@ header p { color: var(--muted); font-size: 13px; margin-top: 12px; font-weight: 
 
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('groups',this)">Group Stage</button>
+    <button class="tab-btn" onclick="switchTab('fixtures',this)">Fixtures</button>
     <button class="tab-btn" onclick="switchTab('bracket',this)">Bracket</button>
   </div>
 
   <div class="tab-pane active" id="tab-groups">
     <div class="section-title">Group Standings</div>
     <div class="groups-grid" id="groupsGrid"></div>
+  </div>
+
+  <div class="tab-pane" id="tab-fixtures">
+    <div class="section-title">Fixtures</div>
+    <div class="fixture-controls" id="fixtureControls"></div>
+    <div id="fixturesList"></div>
   </div>
 
   <div class="tab-pane" id="tab-bracket">
@@ -417,6 +486,8 @@ const BIG_TEAMS = ['Brazil','Germany','France','Spain','Argentina','Portugal','E
 // ══════════════════════════════════════════
 let groupsData   = {};
 let knockoutData = [];
+let fixturesData = [];
+let fixtureFilter = "all";
 let myTeam       = localStorage.getItem('wc26_myteam') || null;
 let activeFilter = 'all';
 let searchTerm   = '';
@@ -458,6 +529,7 @@ async function loadAll() {
   }
 
   renderGroups();
+  renderFixtures();
   renderBracket();
   restoreMyTeam();
   showLoading(false);
@@ -515,22 +587,43 @@ async function loadMatches() {
   const byStage = {};
   stageOrder.forEach(s => (byStage[s] = []));
 
+  // Build full fixtures list (all stages including group)
+  fixturesData = [];
+
   (data.matches || []).forEach(m => {
+    const utcDate = m.utcDate ? new Date(m.utcDate) : null;
+    const match = {
+      home:       m.homeTeam?.name || 'TBD',
+      homeFlag:   FLAG_MAP[m.homeTeam?.name] || '⬜',
+      away:       m.awayTeam?.name || 'TBD',
+      awayFlag:   FLAG_MAP[m.awayTeam?.name] || '⬜',
+      homeScore:  m.score?.fullTime?.home ?? null,
+      awayScore:  m.score?.fullTime?.away ?? null,
+      status:     m.status,
+      stage:      m.stage,
+      group:      m.group || null,
+      utcDate:    utcDate,
+      dateLabel:  utcDate ? utcDate.toLocaleDateString('en-GB', { weekday:'short', month:'short', day:'numeric' }) : '–',
+      timeLabel:  utcDate ? utcDate.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : '',
+      venue:      m.venue || '',
+    };
+
+    // Add to fixtures
+    fixturesData.push(match);
+
+    // Add to knockout structure if applicable
     const s = m.stage;
-    if (!byStage[s]) return;
-    byStage[s].push({
-      home:      m.homeTeam?.name || 'TBD',
-      homeFlag:  FLAG_MAP[m.homeTeam?.name] || '⬜',
-      away:      m.awayTeam?.name || 'TBD',
-      awayFlag:  FLAG_MAP[m.awayTeam?.name] || '⬜',
-      homeScore: m.score?.fullTime?.home ?? null,
-      awayScore: m.score?.fullTime?.away ?? null,
-      status:    m.status,
-      date:      m.utcDate
-        ? new Date(m.utcDate).toLocaleDateString('en-GB', { month:'short', day:'numeric' })
-        : '–',
+    if (byStage[s]) byStage[s].push({
+      home: match.home, homeFlag: match.homeFlag,
+      away: match.away, awayFlag: match.awayFlag,
+      homeScore: match.homeScore, awayScore: match.awayScore,
+      status: match.status,
+      date: utcDate ? utcDate.toLocaleDateString('en-GB', { month:'short', day:'numeric' }) : '–',
     });
   });
+
+  // Sort fixtures chronologically
+  fixturesData.sort((a, b) => (a.utcDate || 0) - (b.utcDate || 0));
 
   knockoutData = stageOrder
     .filter(s => byStage[s].length > 0)
@@ -560,6 +653,107 @@ function loadStaticFallback() {
     });
   });
   buildPlaceholderKnockout();
+}
+
+
+// ══════════════════════════════════════════
+// RENDER FIXTURES
+// ══════════════════════════════════════════
+function renderFixtures() {
+  const container = document.getElementById('fixturesList');
+  const controls  = document.getElementById('fixtureControls');
+  if (!container) return;
+
+  const now   = new Date();
+  const today = now.toDateString();
+
+  const filterDefs = [
+    { id:'all',      label:'All Fixtures' },
+    { id:'today',    label:'Today' },
+    { id:'upcoming', label:'Upcoming' },
+    { id:'results',  label:'Results' },
+  ];
+  if (myTeam) filterDefs.push({ id:'my-team', label:'\u2B50 My Team' });
+
+  controls.innerHTML = filterDefs.map(f =>
+    '<button class="fix-filter-btn' + (fixtureFilter===f.id?' active':'') + '" onclick="setFixtureFilter(\'' + f.id + '\',this)">' + f.label + '</button>'
+  ).join('');
+
+  let matches = fixturesData.filter(function(m) {
+    if (fixtureFilter === 'today')    return m.utcDate && m.utcDate.toDateString() === today;
+    if (fixtureFilter === 'upcoming') return m.utcDate && m.utcDate > now && m.status === 'SCHEDULED';
+    if (fixtureFilter === 'results')  return m.status === 'FINISHED';
+    if (fixtureFilter === 'my-team')  return myTeam && (m.home === myTeam || m.away === myTeam);
+    return true;
+  });
+
+  if (matches.length === 0) {
+    var msg = fixtureFilter === 'today' ? 'No matches scheduled today.' :
+              fixtureFilter === 'my-team' ? 'No fixtures found for your team yet.' :
+              'No fixtures available yet.';
+    container.innerHTML = '<div class="no-fixtures">' + msg + '</div>';
+    return;
+  }
+
+  var byDay = {};
+  matches.forEach(function(m) {
+    var key = m.utcDate ? m.utcDate.toDateString() : 'TBD';
+    if (!byDay[key]) byDay[key] = { label: m.dateLabel, isToday: key === today, matches: [] };
+    byDay[key].matches.push(m);
+  });
+
+  var stageMap = {
+    GROUP_STAGE:'Group Stage', ROUND_OF_32:'R32', ROUND_OF_16:'R16',
+    QUARTER_FINALS:'QF', SEMI_FINALS:'SF', THIRD_PLACE:'3rd Place', FINAL:'Final'
+  };
+
+  var html = '';
+  Object.keys(byDay).forEach(function(key) {
+    var day = byDay[key];
+    html += '<div class="fixture-day">';
+    html += '<div class="fixture-day-header">' + day.label;
+    if (day.isToday) html += ' <span class="today-badge">Today</span>';
+    html += '</div>';
+
+    day.matches.forEach(function(m) {
+      var isLive     = m.status === 'IN_PLAY' || m.status === 'PAUSED';
+      var isFinished = m.status === 'FINISHED';
+      var isMyMatch  = myTeam && (m.home === myTeam || m.away === myTeam);
+      var hasScore   = m.homeScore !== null && m.awayScore !== null;
+
+      var rowClass = 'fixture-row';
+      if (isLive)    rowClass += ' live-fixture';
+      if (isMyMatch) rowClass += ' my-team-fixture';
+
+      var timeHtml = '';
+      if (isLive)     timeHtml = '<div class="fx-t">LIVE</div><div class="live-dot">\u25CF NOW</div>';
+      else if (isFinished) timeHtml = '<div class="fx-t" style="font-size:13px;color:var(--muted)">FT</div>';
+      else            timeHtml = '<div class="fx-t">' + (m.timeLabel || '--:--') + '</div>';
+
+      var scoreHtml = hasScore
+        ? '<span class="s">' + m.homeScore + '</span><span class="dash">&ndash;</span><span class="s">' + m.awayScore + '</span>'
+        : '<span class="dash" style="font-size:18px">vs</span>';
+
+      html += '<div class="' + rowClass + '">';
+      html += '<div class="fixture-time">' + timeHtml + '</div>';
+      html += '<div class="fixture-teams">';
+      html += '<div class="fx-team"><span class="fx-flag">' + m.homeFlag + '</span><span class="fx-name">' + m.home + '</span></div>';
+      html += '<div class="fx-score">' + scoreHtml + '</div>';
+      html += '<div class="fx-team away"><span class="fx-flag">' + m.awayFlag + '</span><span class="fx-name">' + m.away + '</span></div>';
+      html += '</div>';
+      html += '<div class="fixture-meta"><div class="fx-stage">' + (stageMap[m.stage] || m.stage) + '</div>';
+      if (m.venue) html += '<div class="fx-venue">' + m.venue + '</div>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+  });
+
+  container.innerHTML = html;
+}
+
+function setFixtureFilter(f, btn) {
+  fixtureFilter = f;
+  renderFixtures();
 }
 
 // ══════════════════════════════════════════
@@ -715,6 +909,7 @@ function pickTeam(name, flag, group) {
   localStorage.setItem('wc26_myteam', name);
   updateBanner(name, flag, group);
   renderGroups();
+  renderFixtures();
   renderBracket();
 }
 function clearMyTeam() {
@@ -722,6 +917,7 @@ function clearMyTeam() {
   localStorage.removeItem('wc26_myteam');
   document.getElementById('myTeamBanner').classList.remove('show');
   renderGroups();
+  renderFixtures();
   renderBracket();
 }
 function restoreMyTeam() {

@@ -9,13 +9,9 @@ exports.handler = async function () {
   }
 
   try {
-    const stages = [
-      'ROUND_OF_32', 'ROUND_OF_16', 'QUARTER_FINALS',
-      'SEMI_FINALS', 'THIRD_PLACE', 'FINAL',
-    ].join(',');
-
+    // Fetch ALL matches (group stage + knockout) — no stage filter
     const res = await fetch(
-      `https://api.football-data.org/v4/competitions/WC/matches?stage=${stages}`,
+      'https://api.football-data.org/v4/competitions/WC/matches',
       { headers: { 'X-Auth-Token': API_KEY } }
     );
 
