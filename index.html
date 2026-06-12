@@ -293,7 +293,7 @@ header p { color: var(--muted); font-size: 13px; margin-top: 12px; font-weight: 
 .tt-hint { font-size: 9px; color: var(--muted); margin-top: 6px; letter-spacing: .5px; }
 
 @media (max-width: 600px) {
-  .groups-grid { grid-template-columns: 1fr 1fr; }
+  .groups-grid { grid-template-columns: 1fr; }
   .bracket { min-width: 700px; }
 }
 
@@ -357,6 +357,7 @@ header p { color: var(--muted); font-size: 13px; margin-top: 12px; font-weight: 
 @media (max-width:600px) {
   .fixture-meta { display:none; }
   .fx-team .fx-name { font-size:11px; }
+  .team-name { white-space:normal; font-size:13px; }
 }
 </style>
 </head>
@@ -520,6 +521,9 @@ async function loadAll() {
 
   try {
     await Promise.all([loadStandings(), loadMatches()]);
+    // Count matches played directly from fixturesData — cleaner than deriving from standings
+    const played = fixturesData.filter(m => m.status === 'FINISHED').length;
+    document.getElementById('statMatchday').textContent = played || '0';
     setApiStatus(true, 'Live data · football-data.org');
   } catch (e) {
     console.warn('API error:', e.message);
@@ -544,12 +548,6 @@ async function loadStandings() {
   }
   const data = await res.json();
 
-  // Count total matches played across all groups
-  const matchesPlayed = (data.standings || []).reduce((total, group) => {
-    const played = group.table?.[0]?.playedGames || 0;
-    return total + (played * group.table.length / 2);
-  }, 0);
-  document.getElementById('statMatchday').textContent = Math.round(matchesPlayed) || '–';
   groupsData = {};
 
   (data.standings || []).forEach(group => {
@@ -598,8 +596,22 @@ async function loadMatches() {
       homeFlag:   FLAG_MAP[m.homeTeam?.name] || '⬜',
       away:       m.awayTeam?.name || 'TBD',
       awayFlag:   FLAG_MAP[m.awayTeam?.name] || '⬜',
-      homeScore:  m.score?.fullTime?.home ?? null,
-      awayScore:  m.score?.fullTime?.away ?? null,
+      homeScore:  (() => {
+        const s = m.score;
+        if (!s) return null;
+        // fullTime is the running score during IN_PLAY, final score when FINISHED
+        if (s.fullTime?.home !== null && s.fullTime?.home !== undefined) return s.fullTime.home;
+        // PAUSED = half time, fall back to halfTime score
+        if (s.halfTime?.home !== null && s.halfTime?.home !== undefined) return s.halfTime.home;
+        return null;
+      })(),
+      awayScore:  (() => {
+        const s = m.score;
+        if (!s) return null;
+        if (s.fullTime?.away !== null && s.fullTime?.away !== undefined) return s.fullTime.away;
+        if (s.halfTime?.away !== null && s.halfTime?.away !== undefined) return s.halfTime.away;
+        return null;
+      })(),
       status:     m.status,
       stage:      m.stage,
       group:      m.group || null,
@@ -782,7 +794,7 @@ function renderGroups() {
     card.innerHTML = `
       <div class="group-header">
         <div class="group-letter">${letter}</div>
-        <div class="group-label">Group ${letter}</div>
+        <div class="group-label">Group</div>
         ${isHostGroup ? '<div class="host-tag">🏠 Host</div>' : ''}
         ${hasMyTeam ? '<span style="margin-left:auto;font-size:12px">⭐</span>' : ''}
       </div>
